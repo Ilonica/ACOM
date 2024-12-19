@@ -1,0 +1,75 @@
+import cv2
+import numpy as np
+def preprocess(file, kersize: int):
+    # Преобразуем изображение в оттенки серого, чтобы упростить обработку
+    img = cv2.cvtColor(file, cv2.COLOR_BGR2GRAY)
+    # Применяем размытие Гаусса для сглаживания изображения и уменьшения шумов
+    return cv2.GaussianBlur(img, (kersize, kersize), 0)
+
+
+cap = cv2.VideoCapture('v.mov')
+#cap = cv2.VideoCapture(0)
+
+kernel = 5  # Размер ядра
+minarea = 100 # Минимальная площадь контура для его распознавания как движения
+threshold = 25 # Пороговое значение для бинаризации разницы между кадрами
+
+# Считываем первый кадр из видео
+ret, frame = cap.read()
+
+# Получаем параметры видео для сохранения обработанного видео (ширина, высота, частота и кодек видео)
+w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = int(cap.get(cv2.CAP_PROP_FPS))
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+video_writer = cv2.VideoWriter("Output.mp4", fourcc, fps, (w, h))
+
+# Преобразуем первый кадр для дальнейшей обработки
+img = preprocess(frame, kernel)
+
+# Цикл обработки кадров
+while True:
+    # Считываем следующий кадр из видео
+    ret2, frame2 = cap.read()
+    # Отображаем текущий кадр
+    cv2.imshow('original', frame2)
+
+    # Копируем текущий кадр для возможной записи в файл
+    img_copy = frame2
+    img2 = preprocess(frame2, kernel)
+
+    # Вычисляем разницу между текущим и предыдущим кадром
+    imgdif = cv2.absdiff(img, img2)
+    cv2.imshow('absdiff', imgdif)
+    # Операция двоичного разделения (бинаризация) для выделения движущихся объектов
+    # (любой пиксель с яркостью меньше threshold станет черным, иначе белым)
+    ret3, imgdif = cv2.threshold(imgdif, threshold, 255, 0)
+    cv2.imshow('threshold', imgdif)
+
+    # Находим контуры на бинаризированном изображении (будут возвращены только внешние контуры,
+    # удаляются избыточные точки и хранятся только ключевые точки, необходимые для представления формы)
+    contours, hierarchy = cv2.findContours(imgdif, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Установлено False, чтобы указать, что движения пока не обнаружено
+    has_motion = False
+
+    for cnt in contours:
+        # Вычисляем площадь контура
+        contArea = cv2.contourArea(cnt)
+        # Если площадь больше минимального значения, считаем, что есть движение.
+        if contArea >= minarea:
+            print(contArea)
+            has_motion = True # Устанавливаем флаг движения
+            break
+
+    # Если обнаружено движение, записываем текущий кадр в видеофайл
+    if has_motion:
+        print("Зафиксировано движение")
+        video_writer.write(img_copy)
+    frame_prev = frame
+    img = img2
+    if cv2.waitKey(10) & 0xFF == 27:
+        break
+
+cap.release()
+video_writer.release()
+cv2.destroyAllWindows()
